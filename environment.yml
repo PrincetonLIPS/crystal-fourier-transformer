@@ -1,0 +1,21 @@
+name: cft
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - cuda-nvcc
+  - jax
+  - jaxlib=*=*cuda*
+  - flax
+  - optax
+  - orbax-checkpoint
+  - numpy
+  - scipy
+  - networkx
+  - scikit-learn
+  - pymatgen
+  - wandb
+  - jsonpickle
+  - tqdm
+  - typing-extensions
