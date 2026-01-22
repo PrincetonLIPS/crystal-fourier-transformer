@@ -16,19 +16,17 @@ We provide pretrained models for four material properties:
 ```
 crystal-fourier-transformer/
 ├── checkpoints/                    # Trained model checkpoints
-│   ├── bulk_modulus/              # Bulk modulus prediction model
-│   ├── shear_modulus/             # Shear modulus prediction model
-│   ├── total_energy/              # Total energy prediction model
-│   └── band_gap/                  # Band gap prediction model
+│   ├── bulk_modulus/              
+│   ├── shear_modulus/             
+│   ├── total_energy/             
+│   └── band_gap/ 
 ├── pretrained_pos_enc/             # Pretrained positional encodings (128-dim)
-│   ├── cubic_adjacency_matrices.npz
-│   ├── hexagonal_adjacency_matrices.npz
 │   ├── cubic_encoder/              # Pretrained MLP for cubic systems
 │   └── hexagonal_encoder/          # Pretrained MLP for hexagonal systems
 ├── data/
 │   └── get_materials.py           # Download data from Materials Project API
 ├── layers/
-│   ├── attention.py               # Multi-head attention implementation
+│   ├── attention.py               # Multi-head attention
 │   ├── feed_forward.py            # Feed-forward MLP layers
 │   └── positional_encoding.py     # Positional encoding variants
 ├── pretrain/
@@ -41,7 +39,7 @@ crystal-fourier-transformer/
 ├── model.py                       # CrystalFourierTransformer model
 ├── train.py                       # Training script
 ├── predict.py                     # Inference script
-├── environment.yml                # Conda environment specification
+├── environment.yml
 └── README.md
 ```
 
@@ -184,14 +182,14 @@ python -m pretrain.mlp --data_dir data/synthetic_crystals_hex --ckpt my_hexagona
 
 The Crystal Fourier Transformer consists of:
 
-1. **Atom Embedding**: Learnable embeddings for atomic numbers (1-100)
+1. **Atom Embedding**: Learnable embeddings for atomic numbers
 
 2. **Positional Encoding**: Space group-aware Fourier basis functions
    - Separate encoders for cubic and hexagonal crystal systems
    - Pretrained MLP maps Fourier coefficients to embedding dimension (128-dim)
    - Optional Gaussian density convolution for smoothness
 
-3. **Transformer Blocks**: Pre-LayerNorm architecture with:
+3. **Transformer Blocks**: Standard pre-LayerNorm architecture with:
    - Multi-head self-attention
    - SiLU-activated feed-forward network
    - Residual connections
