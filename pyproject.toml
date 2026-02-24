@@ -1,0 +1,19 @@
+[project]
+name = "crystal-fourier-transformer"
+version = "0.1.0"
+description = "Crystal property prediction with space group-invariant Fourier positional encodings"
+requires-python = ">=3.10"
+dependencies = [
+    "jax[cuda12]",
+    "flax",
+    "optax",
+    "orbax-checkpoint",
+    "numpy",
+    "scipy",
+    "networkx",
+    "pymatgen",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+data = ["emmet-core", "mp-api"]

@@ -13,9 +13,8 @@ dependencies:
   - numpy
   - scipy
   - networkx
-  - scikit-learn
   - pymatgen
-  - wandb
-  - jsonpickle
+  - emmet-core
+  - mp-api
   - tqdm
   - typing-extensions

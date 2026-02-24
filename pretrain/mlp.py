@@ -10,8 +10,7 @@ from flax.training import train_state, checkpoints
 from typing import Any
 from tqdm import tqdm
 from utils.space_graphs import SpaceGraph
-from space_groups import SpaceGroup
-from space_groups.utils import sympy_to_numpy
+from utils.space_group_data import get_all_space_group_data
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -40,24 +39,27 @@ def parse_args():
     return vars(args)
 
 def precompute_space_group_operations():
+    sg_operations, sg_op_counts, sg_bases = get_all_space_group_data()
+
     all_rotations = []
     all_translations = []
     all_bases = []
     all_op_counts = []
 
-    for sg in range(1, 231):
-        group = SpaceGroup(sg)
-        operations = sympy_to_numpy(group.operations)
-        basis = sympy_to_numpy(group.basic_basis)
-        A_list = [basis @ op[:3, :3] @ np.linalg.inv(basis) for op in operations]
-        t_list = [basis @ op[:3, 3] for op in operations]
-        num_ops = len(A_list)  # Store the actual number of operations before padding
-        padded_rotations = A_list + [np.eye(3)] * (192 - len(A_list))   # Pad to max number of operations
-        padded_translations = t_list + [np.zeros(3)] * (192 - len(t_list))
+    for sg in range(230):
+        n_ops = int(sg_op_counts[sg])
+        basis = sg_bases[sg]
+        basis_inv = np.linalg.inv(basis)
+        ops = sg_operations[sg, :n_ops]
+
+        A_list = [basis @ op[:3, :3] @ basis_inv for op in ops]
+        t_list = [basis @ op[:3, 3] for op in ops]
+        padded_rotations = A_list + [np.eye(3)] * (192 - n_ops)
+        padded_translations = t_list + [np.zeros(3)] * (192 - n_ops)
         all_rotations.append(jnp.array(padded_rotations, dtype=jnp.float32))
         all_translations.append(jnp.array(padded_translations, dtype=jnp.float32))
         all_bases.append(jnp.array(basis, dtype=jnp.float32))
-        all_op_counts.append(num_ops)
+        all_op_counts.append(n_ops)
 
     return jnp.array(all_rotations), jnp.array(all_translations), jnp.array(all_bases), jnp.array(all_op_counts, dtype=jnp.int32)
 

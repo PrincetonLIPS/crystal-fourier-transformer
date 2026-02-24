@@ -1,5 +1,4 @@
-from space_groups import SpaceGroup, PlaneGroup
-from space_groups.utils import sympy_to_numpy
+from utils.space_group_data import get_space_group_operations, get_plane_group_operations
 import numpy as np
 import networkx as nx
 from scipy.linalg import norm
@@ -19,14 +18,13 @@ class SpaceGraph:
             decimals (int): Number of decimals to round for floating point robustness
             k (float): Factor for logarithmic spacing between shells (default: 1.5)
         '''
-        self.group = SpaceGroup(group)
+        self.group_number = group
         self.embedding_dim = embedding_dim
         self.decimals = decimals
         self.points = points
         self.k = k
 
-        operations = sympy_to_numpy(self.group.operations)
-        self.basis = sympy_to_numpy(self.group.basic_basis)
+        operations, self.basis = get_space_group_operations(group)
         self.basis_inv = np.linalg.inv(self.basis)
         self.basis_inv_T = np.linalg.inv(self.basis).T
 
@@ -47,7 +45,7 @@ class SpaceGraph:
         
     def _construct_graph(self):
         """Construct the graph of points within a radius that gives us enough points."""
-        print("Constructing graph for group ", self.group.number)
+        print("Constructing graph for group ", self.group_number)
         if self.points is None:
             # Start with a small radius and increase until we have enough points
             radius = math.ceil((1.5 * self.embedding_dim / (4/3 * math.pi)) ** (1/3))
@@ -125,13 +123,12 @@ class WallpaperGraph:
             points (list): Optional pre-computed points to use
             decimals (int): Number of decimals to round for floating point robustness
         '''
-        self.group = PlaneGroup(group)
+        self.group_number = group
         self.embedding_dim = embedding_dim
         self.decimals = decimals
         self.points = points
 
-        operations = sympy_to_numpy(self.group.operations)
-        self.basis = sympy_to_numpy(self.group.basic_basis)
+        operations, self.basis = get_plane_group_operations(group)
         self.basis_inv = np.linalg.inv(self.basis)
         self.basis_inv_T = np.linalg.inv(self.basis).T
 

@@ -46,16 +46,30 @@ crystal-fourier-transformer/
 ## Setup
 
 1. Clone the repository:
-```bash
-git clone https://github.com/PrincetonLIPS/crystal-fourier-transformer.git
-cd crystal-fourier-transformer
-```
+    ```bash
+    git clone https://github.com/PrincetonLIPS/crystal-fourier-transformer.git
+    cd crystal-fourier-transformer
+    ```
 
-2. Create and activate the conda environment:
-```bash
-conda env create -f environment.yml
-conda activate cft
-```
+2. Install dependencies using **one** of the following options:
+
+    **Option A: Conda**
+    ```bash
+    conda env create -f environment.yml
+    conda activate cft
+    ```
+
+    **Option B: pip / uv**
+    ```bash
+    uv pip install ".[data]"
+    ```
+
+    Omit the `[data]` extra if you don't need the Materials Project download script (`data/get_materials.py`):
+    ```bash
+    uv pip install .
+    ```
+
+    > **Note:** For GPU support with pip/uv, you need a working CUDA 12 installation on your system. The `jax[cuda12]` dependency handles JAX's CUDA bindings, but the CUDA toolkit itself must already be present.
 
 ## Quick Start: Using Pretrained Models
 
