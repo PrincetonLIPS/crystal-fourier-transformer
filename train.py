@@ -51,9 +51,9 @@ def parse_args():
 
 def create_learning_rate_fn(config, num_train_examples):
     """Create a cosine decay learning rate schedule with linear warmup."""
-    steps_per_epoch = num_train_examples // config['batch_size']
+    steps_per_epoch = max(num_train_examples // config['batch_size'], 1)
     total_steps = steps_per_epoch * config['num_epochs']
-    warmup_steps = config['warmup_epochs'] * steps_per_epoch
+    warmup_steps = min(config['warmup_epochs'] * steps_per_epoch, total_steps - 1)
 
     warmup_fn = optax.linear_schedule(
         init_value=0.1 * config['learning_rate'],
@@ -62,7 +62,7 @@ def create_learning_rate_fn(config, num_train_examples):
     )
     cosine_decay_fn = optax.cosine_decay_schedule(
         init_value=config['learning_rate'],
-        decay_steps=total_steps - warmup_steps,
+        decay_steps=max(total_steps - warmup_steps, 1),
         alpha=1e-6
     )
     schedule_fn = optax.join_schedules(
@@ -88,6 +88,8 @@ def train_step(apply_fn, state, batch, dropout_rng, use_gaussian_encoding):
             'lattice_matrices': batch['lattice_matrices'],
             'space_groups': batch['space_groups'],
             'masks': batch['masks'],
+            'cubic_adj': batch['cubic_adj'],
+            'hexagonal_adj': batch['hexagonal_adj'],
             'training': True,
         }
         if use_gaussian_encoding:
@@ -126,6 +128,8 @@ def eval_step(apply_fn, params, batch_stats, batch, use_gaussian_encoding):
         'lattice_matrices': batch['lattice_matrices'],
         'space_groups': batch['space_groups'],
         'masks': batch['masks'],
+        'cubic_adj': batch['cubic_adj'],
+        'hexagonal_adj': batch['hexagonal_adj'],
         'training': False
     }
     if use_gaussian_encoding:
@@ -137,7 +141,7 @@ def eval_step(apply_fn, params, batch_stats, batch, use_gaussian_encoding):
     mae = jnp.mean(jnp.abs(predictions - batch['targets']))
     return loss, mae
 
-def create_train_state(config, cft, train_features, key):
+def create_train_state(config, cft, train_features, key, cubic_fourier_dim, hexagonal_fourier_dim):
     key, init_key = random.split(key)
     
     init_args = {
@@ -146,6 +150,8 @@ def create_train_state(config, cft, train_features, key):
         'lattice_matrices': train_features['lattice_matrices'][:1],
         'space_groups': train_features['space_groups'][:1],
         'masks': train_features['masks'][:1],
+        'cubic_adj': jnp.zeros((1, cubic_fourier_dim, cubic_fourier_dim), dtype=jnp.complex64),
+        'hexagonal_adj': jnp.zeros((1, hexagonal_fourier_dim, hexagonal_fourier_dim), dtype=jnp.complex64),
         'training': False
     }
 
@@ -198,8 +204,8 @@ def get_encoding_components(pretrained_pos_enc='pretrained_pos_enc'):
     # Load adjacency matrices
     cubic_adj_path = os.path.join(pretrained_pos_enc, 'cubic_adjacency_matrices.npz')
     hexagonal_adj_path = os.path.join(pretrained_pos_enc, 'hexagonal_adjacency_matrices.npz')
-    cubic_adj_matrices = jnp.array(np.load(cubic_adj_path)['matrices'])
-    hexagonal_adj_matrices = jnp.array(np.load(hexagonal_adj_path)['matrices'])
+    cubic_adj_matrices = np.load(cubic_adj_path)['matrices'].astype(np.complex64)
+    hexagonal_adj_matrices = np.load(hexagonal_adj_path)['matrices'].astype(np.complex64)
     
     # Get Fourier basis combinations
     cubic_abc_combinations = jnp.array(SpaceGraph(1, 200).get_nodelist())
@@ -224,8 +230,6 @@ def get_encoding_components(pretrained_pos_enc='pretrained_pos_enc'):
 
 def main():
     config = parse_args()
-    
-    # Convert paths to absolute
     config['ckpt_dir'] = os.path.abspath(config['ckpt_dir'])
     config['pretrained_pos_enc'] = os.path.abspath(config['pretrained_pos_enc'])
     
@@ -307,18 +311,25 @@ def main():
         print(f"Done (actual dim: {gaussian_actual_dim}).")
 
     cft = CrystalFourierTransformer(
-        config, 
-        jnp.array(cubic_abc_combinations), 
-        jnp.array(hexagonal_abc_combinations), 
-        cubic_adj_matrices, 
-        hexagonal_adj_matrices, 
-        cubic_pretrained_state, 
-        hexagonal_pretrained_state, 
-        cubic_encoding_config, 
+        config,
+        jnp.array(cubic_abc_combinations),
+        jnp.array(hexagonal_abc_combinations),
+        cubic_pretrained_state,
+        hexagonal_pretrained_state,
+        cubic_encoding_config,
         hexagonal_encoding_config,
     )
-    state = create_train_state(config, cft, train_features, key)
+    cubic_fourier_dim = cubic_adj_matrices.shape[1]
+    hexagonal_fourier_dim = hexagonal_adj_matrices.shape[1]
+    state = create_train_state(config, cft, train_features, key, cubic_fourier_dim, hexagonal_fourier_dim)
     save_model_config(config, config['ckpt_dir'])
+
+    def add_adj_matrices(batch):
+        """Pre-index adjacency matrices for the batch's space groups and add to batch."""
+        sgs = np.array(batch['space_groups']) - 1
+        batch['cubic_adj'] = jnp.array(cubic_adj_matrices[sgs])
+        batch['hexagonal_adj'] = jnp.array(hexagonal_adj_matrices[sgs])
+        return batch
 
     # Training loop
     best_val_mae = float('inf')
@@ -332,6 +343,7 @@ def main():
             batch_indices = train_indices[i:i+config['batch_size']]
             batch = {k: v[batch_indices] for k, v in train_features.items()}
             batch['targets'] = train_targets[batch_indices]
+            batch = add_adj_matrices(batch)
             
             key, dropout_key = random.split(key)
             state, metrics = train_step(cft.apply, state, batch, dropout_key, config['gaussian_encoding'])
@@ -343,6 +355,7 @@ def main():
         for i in range(0, len(val_targets), config['batch_size']):
             batch = {k: v[i:i+config['batch_size']] for k, v in val_features.items()}
             batch['targets'] = val_targets[i:i+config['batch_size']]
+            batch = add_adj_matrices(batch)
             loss, mae = eval_step(cft.apply, state.params, state.batch_stats, batch, config['gaussian_encoding'])
             val_losses.append(loss)
             val_maes.append(mae)
@@ -368,6 +381,7 @@ def main():
     for i in range(0, len(test_targets), config['batch_size']):
         batch = {k: v[i:i+config['batch_size']] for k, v in test_features.items()}
         batch['targets'] = test_targets[i:i+config['batch_size']]
+        batch = add_adj_matrices(batch)
         
         variables = {'params': state.params, 'batch_stats': state.batch_stats}
         model_inputs = {
@@ -376,6 +390,8 @@ def main():
             'lattice_matrices': batch['lattice_matrices'],
             'space_groups': batch['space_groups'],
             'masks': batch['masks'],
+            'cubic_adj': batch['cubic_adj'],
+            'hexagonal_adj': batch['hexagonal_adj'],
             'training': False
         }
         if config['gaussian_encoding']:

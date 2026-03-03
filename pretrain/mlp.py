@@ -136,7 +136,6 @@ class MLP(nn.Module):
 class PretrainedPositionalEncoding(nn.Module):
     config: dict
     abc_combinations: jnp.ndarray
-    adjacency_matrices: jnp.ndarray
     pretrained_state: Any
 
     def setup(self):
@@ -144,21 +143,36 @@ class PretrainedPositionalEncoding(nn.Module):
         self.params = self.param('mlp_params', lambda _: self.pretrained_state.params)
 
     @nn.compact
-    def __call__(self, atom_positions, lattice_vectors, space_group):
-        encodings = encode_positions(atom_positions, space_group, self.abc_combinations, self.adjacency_matrices)
+    def __call__(self, atom_positions, lattice_vectors, space_group, adj_matrix):
+        """
+        Args:
+            atom_positions: (B, N, 3) fractional coordinates.
+            lattice_vectors: (B, 3, 3) lattice matrices.
+            space_group: (B,) space group numbers.
+            adj_matrix: (B, F, F) pre-indexed adjacency matrix for this batch.
+        """
+        encodings = encode_positions(atom_positions, adj_matrix, self.abc_combinations)
         embeddings = self.mlp.apply(
             self.params,
-            encodings, 
-            space_group - 1, 
+            encodings,
+            space_group - 1,
             lattice_vectors
         )
-        # embeddings = self.mlp.apply(self.pretrained_state.params, encodings, space_group - 1, lattice_vectors)
         return embeddings
 
-def encode_positions(atom_positions, space_group, abc_combinations, adjacency_matrices):
+def encode_positions(atom_positions, adj_matrix, abc_combinations):
+    """Compute Fourier positional encodings for a batch of crystals.
+
+    Args:
+        atom_positions: (B, N, 3) fractional coordinates.
+        adj_matrix: (B, F, F) pre-indexed adjacency matrix for this batch.
+        abc_combinations: (F, 3) Fourier basis vectors.
+
+    Returns:
+        (B, N, F) complex-valued positional encodings.
+    """
     encodings = jax.vmap(lambda pos: jnp.exp(1j * 2 * jnp.pi * jnp.dot(pos, abc_combinations.T)))(atom_positions)
-    adjacency_matrix = adjacency_matrices[space_group - 1]
-    return jax.vmap(jnp.matmul)(encodings, adjacency_matrix)
+    return jax.vmap(jnp.matmul)(encodings, adj_matrix)
 
 @jax.jit
 def get_space_group_operations(space_group):

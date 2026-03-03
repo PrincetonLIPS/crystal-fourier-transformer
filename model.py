@@ -17,8 +17,6 @@ class CrystalFourierTransformer(nn.Module):
                 gaussian_encoding (bool), dropout_rate.
         cubic_abc_combinations: Fourier basis vectors for cubic space groups.
         hexagonal_abc_combinations: Fourier basis vectors for hexagonal space groups.
-        cubic_adj_matrices: Adjacency matrices encoding space group symmetries (cubic).
-        hexagonal_adj_matrices: Adjacency matrices encoding space group symmetries (hexagonal).
         cubic_pretrained_state: Pretrained MLP state for cubic positional encodings.
         hexagonal_pretrained_state: Pretrained MLP state for hexagonal positional encodings.
         cubic_encoding_config: Config for cubic positional encoding MLP.
@@ -27,8 +25,6 @@ class CrystalFourierTransformer(nn.Module):
     config: dict
     cubic_abc_combinations: jnp.ndarray
     hexagonal_abc_combinations: jnp.ndarray
-    cubic_adj_matrices: jnp.ndarray
-    hexagonal_adj_matrices: jnp.ndarray
     cubic_pretrained_state: Any = None
     hexagonal_pretrained_state: Any = None
     cubic_encoding_config: dict = None
@@ -44,13 +40,11 @@ class CrystalFourierTransformer(nn.Module):
         self.cubic_positional_encoding = PretrainedPositionalEncoding(
             config=self.cubic_encoding_config,
             abc_combinations=self.cubic_abc_combinations,
-            adjacency_matrices=self.cubic_adj_matrices,
             pretrained_state=self.cubic_pretrained_state
         )
         self.hexagonal_positional_encoding = PretrainedPositionalEncoding(
             config=self.hexagonal_encoding_config,
             abc_combinations=self.hexagonal_abc_combinations,
-            adjacency_matrices=self.hexagonal_adj_matrices,
             pretrained_state=self.hexagonal_pretrained_state
         )
         
@@ -65,7 +59,8 @@ class CrystalFourierTransformer(nn.Module):
         ]
         self.final_ff = FeedForward(self.config)
 
-    def __call__(self, atom_numbers, positions, lattice_matrices, space_groups, masks, 
+    def __call__(self, atom_numbers, positions, lattice_matrices, space_groups, masks,
+                 cubic_adj, hexagonal_adj,
                  training=True, rngs=None, precomputed_positional_encodings=None):
         """Forward pass of the Crystal Fourier Transformer.
         
@@ -75,6 +70,8 @@ class CrystalFourierTransformer(nn.Module):
             lattice_matrices: (B, 3, 3) lattice vectors.
             space_groups: (B,) space group numbers (1-230).
             masks: (B, N) mask for valid atoms (1) vs padding (0).
+            cubic_adj: (B, F_cubic, F_cubic) pre-indexed cubic adjacency matrices for this batch.
+            hexagonal_adj: (B, F_hex, F_hex) pre-indexed hexagonal adjacency matrices for this batch.
             training: Whether in training mode (enables dropout).
             rngs: Random number generators for dropout.
             precomputed_positional_encodings: Optional (B, N, D) precomputed Gaussian encodings.
@@ -87,12 +84,12 @@ class CrystalFourierTransformer(nn.Module):
         # Determine which samples use hexagonal vs cubic encodings
         is_hexagonal = (space_groups >= 143) & (space_groups <= 194)
 
-        # Compute learned positional encodings
+        # Compute learned positional encodings using pre-indexed adjacency matrices
         cubic_pos_encodings = self.cubic_positional_encoding(
-            positions, lattice_matrices, space_groups
+            positions, lattice_matrices, space_groups, cubic_adj
         )
         hexagonal_pos_encodings = self.hexagonal_positional_encoding(
-            positions, lattice_matrices, space_groups
+            positions, lattice_matrices, space_groups, hexagonal_adj
         )
         learned_pos_encodings = jnp.where(
             is_hexagonal[:, None, None],

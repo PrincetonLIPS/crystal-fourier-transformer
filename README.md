@@ -24,7 +24,8 @@ crystal-fourier-transformer/
 │   ├── cubic_encoder/              # Pretrained MLP for cubic systems
 │   └── hexagonal_encoder/          # Pretrained MLP for hexagonal systems
 ├── data/
-│   └── get_materials.py           # Download data from Materials Project API
+│   ├── get_materials.py           # Download data from Materials Project API
+│   └── trial/                     # Small 30-material trial dataset for quick testing
 ├── layers/
 │   ├── attention.py               # Multi-head attention
 │   ├── feed_forward.py            # Feed-forward MLP layers
@@ -70,6 +71,54 @@ crystal-fourier-transformer/
     ```
 
     > **Note:** For GPU support with pip/uv, you need a working CUDA 12 installation on your system. The `jax[cuda12]` dependency handles JAX's CUDA bindings, but the CUDA toolkit itself must already be present.
+
+## Quick Test with Trial Dataset
+
+A small trial dataset of 30 materials is included in `data/trial/` for quickly verifying that inference and training work. It ships with two sets of targets:
+
+| File | Property |
+|------|----------|
+| `id_prop_bulk_modulus.csv` | log10 bulk modulus (same as default) |
+| `id_prop_total_energy.csv` | Total energy per atom (eV/atom) |
+
+Put your desired set of targets in `id_prop.csv`, the default is log10 bulk modulus.
+
+### Test Pretrained Models
+
+**Bulk modulus:**
+
+```bash
+python predict.py \
+    --checkpoint checkpoints/bulk_modulus \
+    --data_dir data/trial \
+    --output predictions_trial_bulk.csv
+```
+
+**Total energy** (swap in total energy targets, then predict):
+
+```bash
+cp data/trial/id_prop_total_energy.csv data/trial/id_prop.csv
+rm -f data/trial/crystal_data.pkl
+python predict.py \
+    --checkpoint checkpoints/total_energy \
+    --data_dir data/trial \
+    --output predictions_trial_total_energy.csv
+```
+
+> **Note:** `crystal_data.pkl` is a cache that includes target values. It must be deleted whenever you switch `id_prop.csv` to a different property.
+
+### Test Training
+
+Run a short training loop to verify the full pipeline:
+
+```bash
+python train.py \
+    --data_dir data/trial \
+    --cache_dir data/trial-cache \
+    --ckpt_dir checkpoints/trial_test \
+    --num_epochs 5 \
+    --batch_size 6
+```
 
 ## Quick Start: Using Pretrained Models
 

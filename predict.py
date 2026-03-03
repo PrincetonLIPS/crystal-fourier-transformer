@@ -74,8 +74,8 @@ def get_encoding_components(pretrained_dir):
     cubic_adj_path = os.path.join(pretrained_dir, 'cubic_adjacency_matrices.npz')
     hexagonal_adj_path = os.path.join(pretrained_dir, 'hexagonal_adjacency_matrices.npz')
     
-    cubic_adj_matrices = jnp.array(np.load(cubic_adj_path)['matrices'])
-    hexagonal_adj_matrices = jnp.array(np.load(hexagonal_adj_path)['matrices'])
+    cubic_adj_matrices = np.load(cubic_adj_path)['matrices'].astype(np.complex64)
+    hexagonal_adj_matrices = np.load(hexagonal_adj_path)['matrices'].astype(np.complex64)
     
     cubic_abc_combinations = jnp.array(SpaceGraph(1, 200).get_nodelist())
     hexagonal_abc_combinations = jnp.array(SpaceGraph(168, 300).get_nodelist())
@@ -122,8 +122,6 @@ def load_model(checkpoint_dir, pretrained_dir):
         config,
         jnp.array(cubic_abc_combinations),
         jnp.array(hexagonal_abc_combinations),
-        cubic_adj_matrices,
-        hexagonal_adj_matrices,
         cubic_pretrained_state,
         hexagonal_pretrained_state,
         cubic_encoding_config,
@@ -140,6 +138,8 @@ def load_model(checkpoint_dir, pretrained_dir):
     dummy_lattice = jnp.eye(3)[None, :, :]
     dummy_space_groups = jnp.array([1])
     dummy_masks = jnp.ones((1, 444))
+    cubic_fourier_dim = cubic_adj_matrices.shape[1]
+    hexagonal_fourier_dim = hexagonal_adj_matrices.shape[1]
     
     init_args = {
         'atom_numbers': dummy_atom_numbers,
@@ -147,6 +147,8 @@ def load_model(checkpoint_dir, pretrained_dir):
         'lattice_matrices': dummy_lattice,
         'space_groups': dummy_space_groups,
         'masks': dummy_masks,
+        'cubic_adj': jnp.zeros((1, cubic_fourier_dim, cubic_fourier_dim), dtype=jnp.complex64),
+        'hexagonal_adj': jnp.zeros((1, hexagonal_fourier_dim, hexagonal_fourier_dim), dtype=jnp.complex64),
         'training': False
     }
     
@@ -169,19 +171,23 @@ def load_model(checkpoint_dir, pretrained_dir):
     
     state = checkpoints.restore_checkpoint(checkpoint_dir, dummy_state)
     
-    return model, state, config
+    return model, state, config, cubic_adj_matrices, hexagonal_adj_matrices
 
 
-def predict_batch(model, state, batch, config):
+def predict_batch(model, state, batch, config, cubic_adj_matrices, hexagonal_adj_matrices):
     """Run inference on a batch of data."""
+    
     variables = {'params': state.params, 'batch_stats': state.batch_stats}
     
+    sgs = np.array(batch['space_groups']) - 1
     model_inputs = {
         'atom_numbers': batch['atom_numbers'],
         'positions': batch['positions'],
         'lattice_matrices': batch['lattice_matrices'],
         'space_groups': batch['space_groups'],
         'masks': batch['masks'],
+        'cubic_adj': jnp.array(cubic_adj_matrices[sgs]),
+        'hexagonal_adj': jnp.array(hexagonal_adj_matrices[sgs]),
         'training': False
     }
     
@@ -196,7 +202,7 @@ def main():
     args = parse_args()
     
     print(f"Loading model from {args.checkpoint}...")
-    model, state, config = load_model(args.checkpoint, args.pretrained_dir)
+    model, state, config, cubic_adj_matrices, hexagonal_adj_matrices = load_model(args.checkpoint, args.pretrained_dir)
     print("Model loaded successfully.")
     
     # Load data
@@ -240,7 +246,7 @@ def main():
         batch = {k: v[i:end_idx] for k, v in features.items()}
         batch['targets'] = targets[i:end_idx]
         
-        predictions = predict_batch(model, state, batch, config)
+        predictions = predict_batch(model, state, batch, config, cubic_adj_matrices, hexagonal_adj_matrices)
         all_predictions.append(np.asarray(predictions))
         
         if (i + args.batch_size) % (args.batch_size * 10) == 0:
