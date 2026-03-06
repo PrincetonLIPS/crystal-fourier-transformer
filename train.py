@@ -12,7 +12,6 @@ from functools import partial
 from model import CrystalFourierTransformer
 from utils.data_processing import prepare_data
 from utils.gaussian_encoding import compute_batch_encodings
-from utils.space_graphs import SpaceGraph
 from pretrain.mlp import load_trained_state, MLP
 from jax import random
 from flax.training import train_state, checkpoints
@@ -201,15 +200,17 @@ def get_encoding_components(pretrained_pos_enc='pretrained_pos_enc'):
     # Convert to absolute path if relative
     pretrained_pos_enc = os.path.abspath(pretrained_pos_enc)
     
-    # Load adjacency matrices
+    # Load adjacency matrices and their paired Fourier basis vectors
     cubic_adj_path = os.path.join(pretrained_pos_enc, 'cubic_adjacency_matrices.npz')
     hexagonal_adj_path = os.path.join(pretrained_pos_enc, 'hexagonal_adjacency_matrices.npz')
-    cubic_adj_matrices = np.load(cubic_adj_path)['matrices'].astype(np.complex64)
-    hexagonal_adj_matrices = np.load(hexagonal_adj_path)['matrices'].astype(np.complex64)
     
-    # Get Fourier basis combinations
-    cubic_abc_combinations = jnp.array(SpaceGraph(1, 200).get_nodelist())
-    hexagonal_abc_combinations = jnp.array(SpaceGraph(168, 300).get_nodelist())
+    cubic_data = np.load(cubic_adj_path)
+    cubic_adj_matrices = cubic_data['matrices'].astype(np.complex64)
+    cubic_abc_combinations = jnp.array(cubic_data['abc_combinations'])
+    
+    hexagonal_data = np.load(hexagonal_adj_path)
+    hexagonal_adj_matrices = hexagonal_data['matrices'].astype(np.complex64)
+    hexagonal_abc_combinations = jnp.array(hexagonal_data['abc_combinations'])
     
     # Load pretrained encoder states
     cubic_encoder_dir = os.path.join(pretrained_pos_enc, 'cubic_encoder')

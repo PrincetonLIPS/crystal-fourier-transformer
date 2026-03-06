@@ -21,7 +21,6 @@ import csv
 import optax
 from model import CrystalFourierTransformer
 from utils.data_processing import prepare_data, load_crystal_data, pre_process_data
-from utils.space_graphs import SpaceGraph
 from pretrain.mlp import MLP
 from flax.training import train_state, checkpoints
 from utils.gaussian_encoding import compute_batch_encodings
@@ -74,11 +73,13 @@ def get_encoding_components(pretrained_dir):
     cubic_adj_path = os.path.join(pretrained_dir, 'cubic_adjacency_matrices.npz')
     hexagonal_adj_path = os.path.join(pretrained_dir, 'hexagonal_adjacency_matrices.npz')
     
-    cubic_adj_matrices = np.load(cubic_adj_path)['matrices'].astype(np.complex64)
-    hexagonal_adj_matrices = np.load(hexagonal_adj_path)['matrices'].astype(np.complex64)
+    cubic_data = np.load(cubic_adj_path)
+    cubic_adj_matrices = cubic_data['matrices'].astype(np.complex64)
+    cubic_abc_combinations = jnp.array(cubic_data['abc_combinations'])
     
-    cubic_abc_combinations = jnp.array(SpaceGraph(1, 200).get_nodelist())
-    hexagonal_abc_combinations = jnp.array(SpaceGraph(168, 300).get_nodelist())
+    hexagonal_data = np.load(hexagonal_adj_path)
+    hexagonal_adj_matrices = hexagonal_data['matrices'].astype(np.complex64)
+    hexagonal_abc_combinations = jnp.array(hexagonal_data['abc_combinations'])
     
     cubic_encoder_dir = os.path.join(pretrained_dir, 'cubic_encoder')
     hexagonal_encoder_dir = os.path.join(pretrained_dir, 'hexagonal_encoder')
@@ -262,7 +263,6 @@ def main():
     
     print(f"\nResults:")
     print(f"  MAE:  {mae:.4f}")
-    print(f"  RMSE: {rmse:.4f}")
     print(f"  MSE:  {mse:.4f}")
     
     # Save predictions
